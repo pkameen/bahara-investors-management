@@ -1,5 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { calculateNetProfit, distributeProfit, toCurrency, toCents } from './financeEngine';
+import { doc, updateDoc } from 'firebase/firestore';
+import { db } from './firebase';
 
 const formatIndianCurrency = (val) => {
     if (val === null || val === undefined || val === '') return '';
@@ -121,6 +123,33 @@ const ShipmentAllocation = ({ activeInvestors, onSaveTransaction, editTransactio
         setIsExpenseFormOpen(true);
     };
 
+    const handleDeleteExpense = async (exp) => {
+        if (!window.confirm('Delete this expense?')) return;
+        const updatedExpenses = expenses.filter(e => e.id !== exp.id);
+        setExpenses(updatedExpenses);
+        
+        if (editTransaction && editTransaction.id) {
+            try {
+                await updateDoc(doc(db, 'transactions', editTransaction.id), { expenses: updatedExpenses });
+            } catch (error) {
+                console.error("Firebase Error (delete expense):", error);
+            }
+        }
+    };
+
+    const handleRemoveAllocation = async (indexToRemove) => {
+        const updatedAllocations = allocations.filter((_, idx) => idx !== indexToRemove);
+        setAllocations(updatedAllocations);
+
+        if (editTransaction && editTransaction.id) {
+            try {
+                await updateDoc(doc(db, 'transactions', editTransaction.id), { allocations: updatedAllocations });
+            } catch (error) {
+                console.error("Firebase Error (delete allocation):", error);
+            }
+        }
+    };
+
     // Derived financial calculations
     const totalExpensesAmount = useMemo(() => expenses.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0), [expenses]);
     
@@ -237,8 +266,8 @@ const ShipmentAllocation = ({ activeInvestors, onSaveTransaction, editTransactio
     
             // If the saleId is exactly the same as editTransaction, we are editing. 
             // If it's a duplication, the saleId changed, so treat as new.
-            const isEdit = editTransaction && editTransaction.saleId === shipmentDetails.saleId;
-            onSaveTransaction(finalTransactionPayload, isEdit, editTransaction?.saleId);
+        const isEdit = editTransaction && editTransaction.saleId === shipmentDetails.saleId;
+        onSaveTransaction(finalTransactionPayload, isEdit, editTransaction?.id || editTransaction?.saleId);
         } catch (e) {
             alert(e.message);
         }
@@ -356,7 +385,7 @@ const ShipmentAllocation = ({ activeInvestors, onSaveTransaction, editTransactio
                                                 <p className="text-sm font-bold text-red-600">-₹{parseFloat(exp.amount).toLocaleString()}</p>
                                                 <div className="text-xs space-x-2 sm:mt-1">
                                                     <button onClick={() => handleEditExpense(exp)} className="text-blue-600 hover:text-blue-800">Edit</button>
-                                                    <button onClick={() => { if(window.confirm('Delete this expense?')) setExpenses(expenses.filter(e => e.id !== exp.id)) }} className="text-red-600 hover:text-red-800">Delete</button>
+                                    <button onClick={() => handleDeleteExpense(exp)} className="text-red-600 hover:text-red-800">Delete</button>
                                                 </div>
                                             </div>
                                         </li>
@@ -432,7 +461,7 @@ const ShipmentAllocation = ({ activeInvestors, onSaveTransaction, editTransactio
                                                     <h3 className="font-bold text-gray-800 text-base">{a.investorName}</h3>
                                                 </div>
                                                 <button 
-                                                    onClick={() => setAllocations(allocations.filter((_, idx) => idx !== i))} 
+                                    onClick={() => handleRemoveAllocation(i)} 
                                                     className="text-gray-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded-lg transition-colors"
                                                     title="Remove Allocation"
                                                 >
@@ -648,6 +677,7 @@ const ShipmentAllocation = ({ activeInvestors, onSaveTransaction, editTransactio
                 </div>
             </div>
         </div>
+
     );
 };
 

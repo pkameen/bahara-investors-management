@@ -19,16 +19,34 @@ function App() {
   useEffect(() => {
     const unsubInvestors = onSnapshot(collection(db, 'investors'), (snapshot) => {
       setInvestors(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })));
+    }, (error) => {
+      console.error("Firebase Read Error (Investors):", error);
+      alert("Sync Error (Investors): " + error.message);
     });
     const unsubTransactions = onSnapshot(collection(db, 'transactions'), (snapshot) => {
       setTransactions(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })));
+    }, (error) => {
+      console.error("Firebase Read Error (Transactions):", error);
+      alert("Sync Error (Transactions): " + error.message);
     });
+    const unsubAudit = onSnapshot(collection(db, 'auditLogs'), (snapshot) => {
+      setAuditLogs(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })).sort((a,b) => new Date(b.date) - new Date(a.date)));
+    }, (error) => {
+      console.error("Firebase Read Error (Audit):", error);
+    });
+
     setIsDataLoaded(true);
-    return () => { unsubInvestors(); unsubTransactions(); };
+    return () => { unsubInvestors(); unsubTransactions(); unsubAudit(); };
   }, []);
 
-  const logAudit = (action, details, oldValue, newValue) => {
-    setAuditLogs(prev => [{ id: Date.now().toString(), date: new Date().toISOString(), user: 'Admin', action, details, oldValue, newValue }, ...prev]);
+  const logAudit = async (action, details, oldValue, newValue) => {
+    try {
+      const id = Date.now().toString();
+      const logEntry = { id, date: new Date().toISOString(), user: 'Admin', action, details, oldValue, newValue };
+      await setDoc(doc(db, 'auditLogs', id), logEntry);
+    } catch (error) {
+      console.error("Failed to save audit log:", error);
+    }
   };
 
   const reverseTransactionEffects = (txToReverse, currentInvestors) => {
@@ -51,13 +69,13 @@ function App() {
     });
   };
 
-  const handleSaveTransaction = async (transactionPayload, isEdit = false, originalSaleId = null) => {
+  const handleSaveTransaction = async (transactionPayload, isEdit = false, originalId = null) => {
     try {
       let workingInvestors = [...investors];
       let oldTx = null;
 
       if (isEdit) {
-        oldTx = transactions.find(t => t.saleId === originalSaleId);
+        oldTx = transactions.find(t => t.id === originalId || t.saleId === originalId);
         workingInvestors = reverseTransactionEffects(oldTx, workingInvestors);
       }
 
@@ -82,8 +100,8 @@ function App() {
 
       const batch = writeBatch(db);
       
-      if (isEdit && originalSaleId !== transactionPayload.saleId) {
-          batch.delete(doc(db, 'transactions', originalSaleId));
+      if (isEdit && originalId && originalId !== transactionPayload.saleId) {
+          batch.delete(doc(db, 'transactions', originalId));
       }
       batch.set(doc(db, 'transactions', transactionPayload.saleId), transactionPayload);
 
@@ -94,7 +112,7 @@ function App() {
       await batch.commit();
 
       if (isEdit) {
-        logAudit('EDIT_BILL', `Edited Bill ${originalSaleId}`, oldTx, transactionPayload);
+        logAudit('EDIT_BILL', `Edited Bill ${oldTx?.saleId || originalId}`, oldTx, transactionPayload);
         alert('Transaction Edited & Profits Recalculated Successfully!');
       } else {
         logAudit('ADD_BILL', `Created New Bill ${transactionPayload.saleId}`, null, transactionPayload);
@@ -108,21 +126,21 @@ function App() {
     }
   };
 
-  const handleDeleteTransaction = async (saleId) => {
-    if (!window.confirm(`Are you sure you want to delete Sale ID ${saleId}? This will auto-reverse all investor profit allocations.`)) return;
+  const handleDeleteTransaction = async (id) => {
+    if (!window.confirm(`Are you sure you want to permanently delete this transaction? This will auto-reverse all investor profit allocations.`)) return;
     
     try {
-      const tx = transactions.find(t => t.saleId === saleId);
+      const tx = transactions.find(t => t.id === id || t.saleId === id);
       const updatedInvestors = reverseTransactionEffects(tx, investors);
 
       const batch = writeBatch(db);
-      batch.delete(doc(db, 'transactions', saleId));
+      batch.delete(doc(db, 'transactions', tx.id)); // Use true Firestore ID
       updatedInvestors.forEach(inv => {
           batch.set(doc(db, 'investors', inv.id), inv);
       });
       await batch.commit();
 
-      logAudit('DELETE_BILL', `Deleted Bill ${saleId}`, tx, null);
+      logAudit('DELETE_BILL', `Deleted Bill ${tx.saleId}`, tx, null);
       alert('Bill deleted and all investor balances restored successfully.');
     } catch (error) {
       alert(error.message);
@@ -130,62 +148,90 @@ function App() {
   };
 
   const handleAddInvestor = async (newInvestor) => {
-    const id = Date.now().toString();
-    const completeInvestor = {
-        ...newInvestor, 
-        id,
-        ledger: [{ id: Date.now().toString(), type: 'INVESTMENT_ADDED', amount: newInvestor.activeBalance, date: new Date().toISOString(), description: 'Initial Investment' }]
-    };
-    await setDoc(doc(db, 'investors', id), completeInvestor);
-    logAudit('ADD_INVESTOR', `Added investor ${newInvestor.name}`, null, completeInvestor);
+    try {
+      const id = Date.now().toString();
+      const completeInvestor = {
+          ...newInvestor, 
+          id,
+          ledger: [{ id: Date.now().toString(), type: 'INVESTMENT_ADDED', amount: newInvestor.activeBalance, date: new Date().toISOString(), description: 'Initial Investment' }]
+      };
+      await setDoc(doc(db, 'investors', id), completeInvestor);
+      logAudit('ADD_INVESTOR', `Added investor ${newInvestor.name}`, null, completeInvestor);
+    } catch (error) {
+      console.error("Firebase Error (handleAddInvestor):", error);
+      alert("Failed to save investor to database. Error: " + error.message);
+    }
   };
 
   const handleUpdateInvestor = async (id, updatedData) => {
-    const oldData = investors.find(i => i.id === id);
-    const newInvData = { ...oldData, ...updatedData };
-    await setDoc(doc(db, 'investors', id), newInvData);
-    logAudit('EDIT_INVESTOR', `Edited investor ${oldData.name}`, oldData, updatedData);
+    try {
+      const oldData = investors.find(i => i.id === id);
+      const newInvData = { ...oldData, ...updatedData };
+      await setDoc(doc(db, 'investors', id), newInvData);
+      logAudit('EDIT_INVESTOR', `Edited investor ${oldData.name}`, oldData, updatedData);
+    } catch (error) {
+      console.error("Firebase Error (handleUpdateInvestor):", error);
+      alert("Failed to update investor. Error: " + error.message);
+    }
   };
 
   const handleDeleteInvestor = async (id) => {
-    const inv = investors.find(i => i.id === id);
-    const hasActiveTx = transactions.some(t => t.allocations.some(a => a.investorId === id));
-    
-    if (hasActiveTx) return alert("Warning: Cannot delete investor. They have active share allocations in past/current shipments.");
-    if (inv.activeBalance > 0) return alert("Warning: Cannot delete investor. Please withdraw their pending balance first.");
-    
-    if (window.confirm(`Are you sure you want to permanently delete investor ${inv.name}?`)) {
-      await deleteDoc(doc(db, 'investors', id));
-      logAudit('DELETE_INVESTOR', `Deleted investor ${inv.name}`, inv, null);
+    try {
+      const inv = investors.find(i => i.id === id);
+      const hasActiveTx = transactions.some(t => t.allocations.some(a => a.investorId === id));
+      
+      if (hasActiveTx) return alert("Warning: Cannot delete investor. They have active share allocations in past/current shipments.");
+      
+      const activeBal = safeFloat(inv.activeBalance) || 0;
+      const pendingProf = safeFloat(inv.pendingProfit) || 0;
+      
+      let confirmMessage = `Are you sure you want to permanently delete investor ${inv.name}?`;
+      
+      if (activeBal !== 0 || pendingProf !== 0) {
+        confirmMessage = `WARNING: ${inv.name} still has an Active Balance of ₹${activeBal} or Pending Profit of ₹${pendingProf}!\n\nAre you sure you want to FORCE delete this investor and completely erase their balances?`;
+      }
+      
+      if (window.confirm(confirmMessage)) {
+        await deleteDoc(doc(db, 'investors', id));
+        logAudit('DELETE_INVESTOR', `Deleted investor ${inv.name}`, inv, null);
+      }
+    } catch (error) {
+      console.error("Firebase Error (handleDeleteInvestor):", error);
+      alert("Failed to delete investor. Error: " + error.message);
     }
   };
 
   const handleLedgerTransaction = async (id, type, amount, description) => {
-    const parsedAmount = safeFloat(amount);
-    const inv = investors.find(i => i.id === id);
-    if (!inv) return;
+    try {
+      const parsedAmount = safeFloat(amount);
+      const inv = investors.find(i => i.id === id);
+      if (!inv) return;
 
-    if (type === 'WITHDRAW' && inv.activeBalance < parsedAmount) {
-      alert("Error: Withdrawal cannot exceed active available balance.");
-      return;
+      if (type === 'WITHDRAW' && inv.activeBalance < parsedAmount) {
+        alert("Error: Withdrawal cannot exceed active available balance.");
+        return;
+      }
+      const isAdd = type === 'ADD';
+      const updatedBalance = safeFloat(inv.activeBalance + (isAdd ? parsedAmount : -parsedAmount));
+      
+      const updatedInv = {
+        ...inv,
+        activeBalance: updatedBalance,
+        ledger: [{ 
+          id: Date.now().toString(), 
+          type: isAdd ? 'INVESTMENT_ADDED' : 'INVESTMENT_WITHDRAWN', 
+          amount: isAdd ? parsedAmount : -parsedAmount, 
+          date: new Date().toISOString(), 
+          description 
+        }, ...(inv.ledger || [])]
+      };
+
+      await setDoc(doc(db, 'investors', id), updatedInv);
+      logAudit(isAdd ? 'ADD_FUNDS' : 'WITHDRAW_FUNDS', `${isAdd ? 'Added' : 'Withdrew'} ₹${parsedAmount} for ${inv.name}`, inv.activeBalance, updatedBalance);
+    } catch (error) {
+      console.error("Firebase Error (handleLedgerTransaction):", error);
+      alert("Failed to process transaction. Error: " + error.message);
     }
-    const isAdd = type === 'ADD';
-    const updatedBalance = safeFloat(inv.activeBalance + (isAdd ? parsedAmount : -parsedAmount));
-    
-    const updatedInv = {
-      ...inv,
-      activeBalance: updatedBalance,
-      ledger: [{ 
-        id: Date.now().toString(), 
-        type: isAdd ? 'INVESTMENT_ADDED' : 'INVESTMENT_WITHDRAWN', 
-        amount: isAdd ? parsedAmount : -parsedAmount, 
-        date: new Date().toISOString(), 
-        description 
-      }, ...(inv.ledger || [])]
-    };
-
-    await setDoc(doc(db, 'investors', id), updatedInv);
-    logAudit(isAdd ? 'ADD_FUNDS' : 'WITHDRAW_FUNDS', `${isAdd ? 'Added' : 'Withdrew'} ₹${parsedAmount} for ${inv.name}`, inv.activeBalance, updatedBalance);
   };
 
   const navigateToNewAllocation = () => {

@@ -240,7 +240,7 @@ const Dashboard = ({ transactions, investors, onDelete, onEdit, onDuplicate, onN
                                             <div className="flex gap-2 w-full justify-start lg:justify-end mt-1">
                                                 <button onClick={() => onEdit(t)} className="text-[11px] font-bold text-blue-600 hover:text-white bg-blue-50 hover:bg-blue-600 px-4 py-2 rounded-lg transition-colors border border-blue-100 hover:border-blue-600 shadow-sm">Edit</button>
                                                 <button onClick={() => onDuplicate(t)} className="text-[11px] font-bold text-purple-600 hover:text-white bg-purple-50 hover:bg-purple-600 px-4 py-2 rounded-lg transition-colors border border-purple-100 hover:border-purple-600 shadow-sm">Duplicate</button>
-                                                <button onClick={() => onDelete(t.saleId)} className="text-[11px] font-bold text-red-600 hover:text-white bg-red-50 hover:bg-red-600 px-4 py-2 rounded-lg transition-colors border border-red-100 hover:border-red-600 shadow-sm">Delete</button>
+                                                <button onClick={() => onDelete(t.id)} className="text-[11px] font-bold text-red-600 hover:text-white bg-red-50 hover:bg-red-600 px-4 py-2 rounded-lg transition-colors border border-red-100 hover:border-red-600 shadow-sm">Delete</button>
                                             </div>
                                         </div>
                                     </div>

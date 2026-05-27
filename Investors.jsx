@@ -125,10 +125,10 @@ const Investors = ({ investors, onAddInvestor, onUpdate, onDelete, onLedgerActio
                         <button onClick={closeForm} className="text-gray-500 hover:text-gray-800">Close</button>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
-                        <div><p className="text-xs text-gray-500 uppercase tracking-wider font-bold">Total Profit Earned</p><p className="text-lg font-bold text-green-600">₹{(activeAction.investor.totalProfit || 0).toLocaleString('en-IN')}</p></div>
-                        <div><p className="text-xs text-gray-500 uppercase tracking-wider font-bold">Total Paid Out</p><p className="text-lg font-bold text-blue-600">₹{((activeAction.investor.totalProfit || 0) - (activeAction.investor.pendingProfit || 0)).toLocaleString('en-IN')}</p></div>
-                        <div><p className="text-xs text-gray-500 uppercase tracking-wider font-bold">Pending Profit</p><p className="text-lg font-bold text-orange-600">₹{(activeAction.investor.pendingProfit || 0).toLocaleString('en-IN')}</p></div>
-                        <div><p className="text-xs text-gray-500 uppercase tracking-wider font-bold">Active Investment</p><p className="text-lg font-bold text-[#064e3b]">₹{(activeAction.investor.activeBalance || 0).toLocaleString('en-IN')}</p></div>
+                        <div><p className="text-xs text-gray-500 uppercase tracking-wider font-bold">Total Profit Earned</p><p className="text-lg font-bold text-green-600">₹{(parseFloat(activeAction.investor.totalProfit) || 0).toLocaleString('en-IN')}</p></div>
+                        <div><p className="text-xs text-gray-500 uppercase tracking-wider font-bold">Total Paid Out</p><p className="text-lg font-bold text-blue-600">₹{((parseFloat(activeAction.investor.totalProfit) || 0) - (parseFloat(activeAction.investor.pendingProfit) || 0)).toLocaleString('en-IN')}</p></div>
+                        <div><p className="text-xs text-gray-500 uppercase tracking-wider font-bold">Pending Profit</p><p className="text-lg font-bold text-orange-600">₹{(parseFloat(activeAction.investor.pendingProfit) || 0).toLocaleString('en-IN')}</p></div>
+                        <div><p className="text-xs text-gray-500 uppercase tracking-wider font-bold">Active Investment</p><p className="text-lg font-bold text-[#064e3b]">₹{(parseFloat(activeAction.investor.activeBalance) || 0).toLocaleString('en-IN')}</p></div>
                     </div>
                     <div className="max-h-64 overflow-y-auto overflow-x-auto">
                         <table className="min-w-full text-sm">
@@ -169,11 +169,11 @@ const Investors = ({ investors, onAddInvestor, onUpdate, onDelete, onLedgerActio
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                     <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${inv.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{inv.status || 'Active'}</span>
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">₹{inv.activeBalance.toLocaleString()}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 font-semibold">₹{inv.totalProfit.toLocaleString()}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-orange-600 font-bold bg-orange-50/50">₹{(inv.pendingProfit || 0).toLocaleString()}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                    <div className="flex items-center justify-end space-x-2">
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">₹{(parseFloat(inv.activeBalance) || 0).toLocaleString('en-IN')}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 font-semibold">₹{(parseFloat(inv.totalProfit) || 0).toLocaleString('en-IN')}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-orange-600 font-bold bg-orange-50/50">₹{(parseFloat(inv.pendingProfit) || 0).toLocaleString('en-IN')}</td>
+                                <td className="px-6 py-4 text-right text-sm font-medium">
+                                    <div className="flex flex-wrap items-center justify-end gap-2 min-w-[250px]">
                                         <button 
                                             onClick={() => setActiveAction({ type: 'VIEW', investor: inv })}
                                             className="inline-flex items-center px-2.5 py-1.5 border border-transparent text-xs font-medium rounded text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
