@@ -41,7 +41,6 @@ const Investors = ({ investors, onAddInvestor, onUpdate, onDelete, onLedgerActio
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 px-4 sm:px-0">
                 <div className="flex items-center gap-4">
-                    <img src="/images/logo img.png" alt="Bahara Logo" className="h-12 w-auto object-contain drop-shadow-sm" />
                     <h1 className="text-3xl font-bold text-[#064e3b] tracking-tight">Investor Management</h1>
                 </div>
                 <button 

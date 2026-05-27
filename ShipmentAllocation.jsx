@@ -249,7 +249,6 @@ const ShipmentAllocation = ({ activeInvestors, onSaveTransaction, editTransactio
             <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-2xl overflow-hidden border border-gray-200 w-full">
                 {/* Header - Dark Green & Gold Luxury Theme */}
                 <div className="bg-[#064e3b] px-4 sm:px-8 py-4 sm:py-6 border-b-4 border-[#d97706] flex items-center gap-4 sm:gap-6">
-                    <img src="/images/logo img.png" alt="Bahara Logo" className="h-12 sm:h-16 w-auto object-contain drop-shadow-md" />
                     <div>
                         <h1 className="text-2xl sm:text-3xl font-bold text-[#fef3c7] tracking-wide">
                             Bahara International Group

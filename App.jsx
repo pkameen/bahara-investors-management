@@ -1,18 +1,31 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import ShipmentAllocation from './ShipmentAllocation';
 import Dashboard from './Dashboard';
 import Investors from './Investors';
-import { sampleInvestors, sampleTransactions } from './sampleData'; 
+import { collection, onSnapshot, doc, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
+import { db } from './firebase';
 
 function App() {
   const [currentTab, setCurrentTab] = useState('dashboard');
-  const [investors, setInvestors] = useState(sampleInvestors);
-  const [transactions, setTransactions] = useState(sampleTransactions);
+  const [investors, setInvestors] = useState([]);
+  const [transactions, setTransactions] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [editingTransaction, setEditingTransaction] = useState(null);
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
 
   // --- HELPER: Safely resolve JS floating point errors ---
   const safeFloat = (num) => Math.round(parseFloat(num) * 100) / 100;
+
+  useEffect(() => {
+    const unsubInvestors = onSnapshot(collection(db, 'investors'), (snapshot) => {
+      setInvestors(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })));
+    });
+    const unsubTransactions = onSnapshot(collection(db, 'transactions'), (snapshot) => {
+      setTransactions(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })));
+    });
+    setIsDataLoaded(true);
+    return () => { unsubInvestors(); unsubTransactions(); };
+  }, []);
 
   const logAudit = (action, details, oldValue, newValue) => {
     setAuditLogs(prev => [{ id: Date.now().toString(), date: new Date().toISOString(), user: 'Admin', action, details, oldValue, newValue }, ...prev]);
@@ -38,7 +51,7 @@ function App() {
     });
   };
 
-  const handleSaveTransaction = (transactionPayload, isEdit = false, originalSaleId = null) => {
+  const handleSaveTransaction = async (transactionPayload, isEdit = false, originalSaleId = null) => {
     try {
       let workingInvestors = [...investors];
       let oldTx = null;
@@ -46,7 +59,6 @@ function App() {
       if (isEdit) {
         oldTx = transactions.find(t => t.saleId === originalSaleId);
         workingInvestors = reverseTransactionEffects(oldTx, workingInvestors);
-        setTransactions(transactions.filter(t => t.saleId !== originalSaleId));
       }
 
       // Apply new transaction effects
@@ -68,14 +80,23 @@ function App() {
         return inv;
       });
 
-      setInvestors(finalInvestors);
+      const batch = writeBatch(db);
       
+      if (isEdit && originalSaleId !== transactionPayload.saleId) {
+          batch.delete(doc(db, 'transactions', originalSaleId));
+      }
+      batch.set(doc(db, 'transactions', transactionPayload.saleId), transactionPayload);
+
+      finalInvestors.forEach(inv => {
+          batch.set(doc(db, 'investors', inv.id), inv);
+      });
+      
+      await batch.commit();
+
       if (isEdit) {
-        setTransactions(prev => [transactionPayload, ...prev.filter(t => t.saleId !== originalSaleId)]);
         logAudit('EDIT_BILL', `Edited Bill ${originalSaleId}`, oldTx, transactionPayload);
         alert('Transaction Edited & Profits Recalculated Successfully!');
       } else {
-        setTransactions(prev => [transactionPayload, ...prev]);
         logAudit('ADD_BILL', `Created New Bill ${transactionPayload.saleId}`, null, transactionPayload);
         alert('Transaction Saved Successfully!');
       }
@@ -87,14 +108,20 @@ function App() {
     }
   };
 
-  const handleDeleteTransaction = (saleId) => {
+  const handleDeleteTransaction = async (saleId) => {
     if (!window.confirm(`Are you sure you want to delete Sale ID ${saleId}? This will auto-reverse all investor profit allocations.`)) return;
     
     try {
       const tx = transactions.find(t => t.saleId === saleId);
       const updatedInvestors = reverseTransactionEffects(tx, investors);
-      setInvestors(updatedInvestors);
-      setTransactions(transactions.filter(t => t.saleId !== saleId));
+
+      const batch = writeBatch(db);
+      batch.delete(doc(db, 'transactions', saleId));
+      updatedInvestors.forEach(inv => {
+          batch.set(doc(db, 'investors', inv.id), inv);
+      });
+      await batch.commit();
+
       logAudit('DELETE_BILL', `Deleted Bill ${saleId}`, tx, null);
       alert('Bill deleted and all investor balances restored successfully.');
     } catch (error) {
@@ -102,23 +129,25 @@ function App() {
     }
   };
 
-  const handleAddInvestor = (newInvestor) => {
+  const handleAddInvestor = async (newInvestor) => {
+    const id = Date.now().toString();
     const completeInvestor = {
         ...newInvestor, 
-        id: Date.now().toString(),
+        id,
         ledger: [{ id: Date.now().toString(), type: 'INVESTMENT_ADDED', amount: newInvestor.activeBalance, date: new Date().toISOString(), description: 'Initial Investment' }]
     };
-    setInvestors([...investors, completeInvestor]);
+    await setDoc(doc(db, 'investors', id), completeInvestor);
     logAudit('ADD_INVESTOR', `Added investor ${newInvestor.name}`, null, completeInvestor);
   };
 
-  const handleUpdateInvestor = (id, updatedData) => {
+  const handleUpdateInvestor = async (id, updatedData) => {
     const oldData = investors.find(i => i.id === id);
-    setInvestors(investors.map(inv => inv.id === id ? { ...inv, ...updatedData } : inv));
+    const newInvData = { ...oldData, ...updatedData };
+    await setDoc(doc(db, 'investors', id), newInvData);
     logAudit('EDIT_INVESTOR', `Edited investor ${oldData.name}`, oldData, updatedData);
   };
 
-  const handleDeleteInvestor = (id) => {
+  const handleDeleteInvestor = async (id) => {
     const inv = investors.find(i => i.id === id);
     const hasActiveTx = transactions.some(t => t.allocations.some(a => a.investorId === id));
     
@@ -126,38 +155,37 @@ function App() {
     if (inv.activeBalance > 0) return alert("Warning: Cannot delete investor. Please withdraw their pending balance first.");
     
     if (window.confirm(`Are you sure you want to permanently delete investor ${inv.name}?`)) {
-      setInvestors(investors.filter(i => i.id !== id));
+      await deleteDoc(doc(db, 'investors', id));
       logAudit('DELETE_INVESTOR', `Deleted investor ${inv.name}`, inv, null);
     }
   };
 
-  const handleLedgerTransaction = (id, type, amount, description) => {
+  const handleLedgerTransaction = async (id, type, amount, description) => {
     const parsedAmount = safeFloat(amount);
-    setInvestors(investors.map(inv => {
-      if (inv.id === id) {
-        if (type === 'WITHDRAW' && inv.activeBalance < parsedAmount) {
-          alert("Error: Withdrawal cannot exceed active available balance.");
-          return inv;
-        }
-        const isAdd = type === 'ADD';
-        const updatedBalance = safeFloat(inv.activeBalance + (isAdd ? parsedAmount : -parsedAmount));
-        
-        logAudit(isAdd ? 'ADD_FUNDS' : 'WITHDRAW_FUNDS', `${isAdd ? 'Added' : 'Withdrew'} ₹${parsedAmount} for ${inv.name}`, inv.activeBalance, updatedBalance);
-        
-        return {
-          ...inv,
-          activeBalance: updatedBalance,
-          ledger: [{ 
-            id: Date.now().toString(), 
-            type: isAdd ? 'INVESTMENT_ADDED' : 'INVESTMENT_WITHDRAWN', 
-            amount: isAdd ? parsedAmount : -parsedAmount, 
-            date: new Date().toISOString(), 
-            description 
-          }, ...inv.ledger]
-        };
-      }
-      return inv;
-    }));
+    const inv = investors.find(i => i.id === id);
+    if (!inv) return;
+
+    if (type === 'WITHDRAW' && inv.activeBalance < parsedAmount) {
+      alert("Error: Withdrawal cannot exceed active available balance.");
+      return;
+    }
+    const isAdd = type === 'ADD';
+    const updatedBalance = safeFloat(inv.activeBalance + (isAdd ? parsedAmount : -parsedAmount));
+    
+    const updatedInv = {
+      ...inv,
+      activeBalance: updatedBalance,
+      ledger: [{ 
+        id: Date.now().toString(), 
+        type: isAdd ? 'INVESTMENT_ADDED' : 'INVESTMENT_WITHDRAWN', 
+        amount: isAdd ? parsedAmount : -parsedAmount, 
+        date: new Date().toISOString(), 
+        description 
+      }, ...(inv.ledger || [])]
+    };
+
+    await setDoc(doc(db, 'investors', id), updatedInv);
+    logAudit(isAdd ? 'ADD_FUNDS' : 'WITHDRAW_FUNDS', `${isAdd ? 'Added' : 'Withdrew'} ₹${parsedAmount} for ${inv.name}`, inv.activeBalance, updatedBalance);
   };
 
   const navigateToNewAllocation = () => {
@@ -176,6 +204,12 @@ function App() {
     setCurrentTab('allocation');
   };
 
+  if (!isDataLoaded) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-100"><h2 className="text-2xl font-bold text-[#064e3b]">Loading Bahara Database...</h2></div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-100">
       <nav className="bg-[#064e3b] text-white shadow-lg">
@@ -183,8 +217,13 @@ function App() {
           <div className="flex flex-col md:flex-row justify-between items-center py-4 md:py-0 md:h-16 gap-4">
             <div className="flex justify-between w-full md:w-auto items-center">
                 <div className="flex items-center">
-                    <img src="/images/logo img.png" alt="Bahara Logo" className="h-10 w-auto mr-3 object-contain drop-shadow-sm" />
-                    <span className="font-bold text-xl text-[#fef3c7] tracking-wide">Bahara Group</span>
+                        <img 
+                            src="/logo.png" 
+                            alt="Bahara Logo" 
+                            onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; }} 
+                            className="h-10 sm:h-12 w-auto mr-3 sm:mr-4 object-contain drop-shadow-md transition-all" 
+                        />
+                        <span className="font-bold text-xl sm:text-2xl text-[#fef3c7] tracking-wide">Bahara Group</span>
                 </div>
             </div>
             <div className="flex items-center space-x-2 overflow-x-auto max-w-full pb-1 sm:pb-0 w-full md:w-auto">

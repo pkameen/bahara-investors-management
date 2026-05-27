@@ -22,7 +22,6 @@ const Dashboard = ({ transactions, investors, onDelete, onEdit, onDuplicate, onN
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-gradient-to-r from-[#064e3b] via-[#065f46] to-[#0f766e] p-8 rounded-3xl shadow-[0_10px_30px_-10px_rgba(6,78,59,0.5)] text-white relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-5 rounded-full -mr-20 -mt-20 blur-3xl pointer-events-none"></div>
                 <div className="relative z-10 flex items-center gap-5">
-                    <img src="/images/logo img.png" alt="Bahara Logo" className="h-16 w-auto object-contain drop-shadow-lg" />
                     <div>
                         <h1 className="text-3xl font-black text-[#fef3c7] tracking-tight">Executive Dashboard</h1>
                         <p className="text-sm text-[#d1fae5] mt-1.5 opacity-90 font-medium">Bahara International Group Financial Overview</p>
